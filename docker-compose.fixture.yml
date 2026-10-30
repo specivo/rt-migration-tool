@@ -1,0 +1,102 @@
+# Request Tracker fixture for developing and testing this tool.
+#
+# One RT version on one database at a time, chosen with the Makefile:
+#
+#   make fixture-build RT_VERSION=6.0.4          # build that RT (fixture/Dockerfile)
+#   make fixture-up RT_VERSION=6.0.4 DB=pg       # start it on PostgreSQL (or DB=mysql)
+#   make fixture-seed RT_VERSION=6.0.4 DB=pg     # fill it through RT's Perl API
+#   make fixture-files RT_VERSION=6.0.4 DB=pg    # copy its external storage out
+#   make fixture-down RT_VERSION=6.0.4 DB=pg     # stop it and discard everything
+#
+# There is no fixed project name: the Makefile derives one from the checkout's
+# path, the RT version and the database, so two checkouts never share
+# containers. The databases live in tmpfs, and RT's external storage is a
+# named volume of that project, copied out with `docker compose cp`, so a
+# fixture's data and its stored files always belong together. To run two
+# fixtures at the same time, give the second one other ports (the variables
+# below).
+#
+# The RT image is built by `make fixture-build` (or by CI, with a cache) and
+# named specivo-rt-fixture:VERSION.
+
+services:
+  rt-db-pg:
+    profiles: ["pg"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: fixture-dba
+    ports:
+      - "127.0.0.1:${RT_TOOL_FIXTURE_PG_PORT:-5462}:5432"
+    tmpfs:
+      # Disposable: in RAM, so a reset is instant and nothing survives a down.
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  rt-pg:
+    profiles: ["pg"]
+    image: specivo-rt-fixture:${RT_VERSION:-6.0.4}
+    pull_policy: never
+    depends_on:
+      rt-db-pg:
+        condition: service_healthy
+    environment:
+      RT_DB_TYPE: Pg
+      RT_DB_HOST: rt-db-pg
+      RT_DB_PORT: "5432"
+      RT_DBA_USER: postgres
+      RT_DBA_PASSWORD: fixture-dba
+    volumes:
+      - external-pg:/opt/rt/var/external-storage
+      - ./fixture:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/rt-ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 100
+
+  rt-db-mysql:
+    profiles: ["mysql"]
+    image: mysql:8.4
+    # RT 4.4's MySQL client library cannot use MySQL 8's default caching_sha2_password.
+    command: --mysql-native-password=ON --authentication-policy=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: fixture-dba
+    ports:
+      - "127.0.0.1:${RT_TOOL_FIXTURE_MYSQL_PORT:-3319}:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -pfixture-dba"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  rt-mysql:
+    profiles: ["mysql"]
+    image: specivo-rt-fixture:${RT_VERSION:-6.0.4}
+    pull_policy: never
+    depends_on:
+      rt-db-mysql:
+        condition: service_healthy
+    environment:
+      RT_DB_TYPE: mysql
+      RT_DB_HOST: rt-db-mysql
+      RT_DB_PORT: "3306"
+      RT_DBA_USER: root
+      RT_DBA_PASSWORD: fixture-dba
+    volumes:
+      - external-mysql:/opt/rt/var/external-storage
+      - ./fixture:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/rt-ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 100
+
+volumes:
+  external-pg:
+  external-mysql:

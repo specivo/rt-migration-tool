@@ -1,0 +1,13 @@
+Specivo Request Tracker migration tool
+Copyright 2026 Specivo
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It reads the database of Request Tracker, which is licensed under the GNU
+General Public License, version 2. No part of Request Tracker is copied into
+this tool: it only reads the data an installation holds. The fixture under
+fixture/ builds Request Tracker from its public source code at test time.
+
+"Request Tracker" and "RT" are trademarks of Best Practical Solutions, LLC.
+This tool is not affiliated with or endorsed by Best Practical Solutions; the
+names are used only to say which system the tool reads.
